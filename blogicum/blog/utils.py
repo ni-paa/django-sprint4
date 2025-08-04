@@ -3,6 +3,7 @@ from django.utils import timezone
 
 
 class PostQuerySet(QuerySet):
+
     def published(self):
         return self.filter(
             pub_date__lte=timezone.now(),
