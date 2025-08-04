@@ -3,7 +3,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.urls import reverse
+from django.urls import reverse_lazy, reverse
+from django.utils import timezone
 from django.views.generic import CreateView, UpdateView, DeleteView
 from django.views.generic import DetailView, ListView
 
@@ -30,40 +31,55 @@ class CategoryPostsView(ListView):
     template_name = 'blog/category.html'
 
     def get_queryset(self):
-        category = get_object_or_404(
+        self.category = get_object_or_404(
             Category, slug=self.kwargs['slug'], is_published=True
         )
-        return category.post_set.published().annotate_comments()
+        queryset = Post.objects.filter(
+            is_published=True,
+            pub_date__lte=timezone.now(),
+            category=self.category
+        ).select_related('author',
+                         'category',
+                         'location').order_by('-pub_date')
+
+        queryset = queryset.annotate(comment_count=Count('comments'))
+        queryset = queryset.filter(category__is_published=True)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['category'] = get_object_or_404(
-            Category, slug=self.kwargs['slug'], is_published=True
-        )
+        context['category'] = self.category
         return context
 
 
 class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
+
     form_class = PostForm
 
     def form_valid(self, form):
         form.instance.author = self.request.user
         return super().form_valid(form)
 
+    def get_success_url(self):
+        return reverse('blog:profile', args={self.request.user.username})
+
 
 class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
+
     form_class = PostForm
+    pk_url_kwarg = 'post_id'
 
     def get_success_url(self):
         return reverse(
-            'blog:post_detail', kwargs={'post_id': self.get_object().id})
+            'blog:post_detail', args={self.get_object().id})
 
 
 class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
 
+    pk_url_kwarg = 'post_id'
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['form'] = PostForm(instance=self.get_object())
+        context['form'] = PostForm(instance=self.object)
         return context
 
 
@@ -72,23 +88,20 @@ class PostDetailView(DetailView):
 
     model = Post
     template_name = 'blog/detail.html'
+    pk_url_kwarg = 'post_id'
 
-    def get_object(self):
-        post_id = self.kwargs['post_id']
-        try:
-            post = Post.objects.get(pk=post_id)
-            if post.author == self.request.user:
-                return post
-            return Post.objects.published().get(pk=post_id)
-        except Post.DoesNotExist:
-            raise Http404("Пост не найден")
+    def get_object(self, queryset=None):
+        post = get_object_or_404(Post, pk=self.kwargs['post_id'])
+        if not post.is_published and self.request.user != post.author:
+            raise Http404
+        return post
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['form'] = CommentForm()
-        context['comments'] = self.object.comments.select_related(
-            'author'
-        ).order_by('created_at')
+        context.update({
+            'form': CommentForm(),
+            'comments': self.object.comments.select_related('author')
+        })
         return context
 
 
@@ -122,11 +135,14 @@ class EditProfileView(LoginRequiredMixin, UpdateView):
     form_class = ProfileForm
     template_name = 'blog/user.html'
 
-    def get_success_url(self):
-        return reverse('blog:profile', args={self.request.user.username})
-
-    def get_object(self):
+    def get_object(self, queryset=None):
         return self.request.user
+
+    def get_success_url(self):
+        return reverse(
+            'blog:profile',
+            kwargs={'username': self.request.user.username}
+        )
 
 
 class AddCommentView(LoginRequiredMixin, CreateView):
