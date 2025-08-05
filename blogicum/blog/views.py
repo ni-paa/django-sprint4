@@ -44,11 +44,10 @@ class CategoryPostsView(ListView):
 
         queryset = queryset.annotate(comment_count=Count('comments'))
         queryset = queryset.filter(category__is_published=True)
+        return queryset
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['category'] = self.category
-        return context
+        return super().get_context_data(**kwargs, category=self.category)
 
 
 class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
@@ -78,9 +77,11 @@ class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
     pk_url_kwarg = 'post_id'
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['form'] = PostForm(instance=self.object)
-        return context
+        return super().get_context_data(**kwargs, form=PostForm(instance=self.object))
+
+    def get_success_url(self):
+        return reverse('blog:profile',
+                       kwargs={'username': self.request.user.username})
 
 
 class PostDetailView(DetailView):
@@ -97,12 +98,9 @@ class PostDetailView(DetailView):
         return post
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context.update({
-            'form': CommentForm(),
+        return {**super().get_context_data(**kwargs), 'form': CommentForm(),
             'comments': self.object.comments.select_related('author')
-        })
-        return context
+        }
 
 
 class ProfileView(ListView):
@@ -113,8 +111,7 @@ class ProfileView(ListView):
     paginate_by = POSTS_ON_PAGE
 
     def get_queryset(self):
-        username = self.kwargs['username']
-        profile = get_object_or_404(User, username=username)
+        profile = get_object_or_404(User, username=self.kwargs['username'])
         posts = Post.objects.filter(author=profile).select_related(
             'author').prefetch_related('comments', 'category', 'location')
         posts_annotated = posts.annotate(comment_count=Count('comments'))

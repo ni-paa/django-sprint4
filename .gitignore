@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+blogicum/static/css/
+
 # C extensions
 *.so
 

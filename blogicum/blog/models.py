@@ -38,6 +38,14 @@ class Category(PublishedModel):
     def __str__(self):
         return self.title[:20]
 
+    def save(self, *args, **kwargs):
+        # Сохраняем оригинальный текст.
+        super().save(*args, **kwargs)
+
+    def get_safe_description(self):
+        # Получаем HTML-описание с заменой новых строк на <br>
+        return self.description.replace('\n', '<br>')
+
 
 class Location(PublishedModel):
     name = models.CharField(max_length=256, verbose_name='Название места')
@@ -92,6 +100,14 @@ class Post(PublishedModel):
 
     def __str__(self):
         return self.title[:100]
+
+    def save(self, *args, **kwargs):
+        # Сохраняем оригинальный текст.
+        super().save(*args, **kwargs)
+
+    def get_safe_description(self):
+        # Получаем HTML-описание с заменой новых строк на <br>
+        return self.text.replace('\n', '<br>')
 
 
 class Comment(models.Model):

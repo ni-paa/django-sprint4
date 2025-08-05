@@ -9,12 +9,12 @@ class PostQuerySet(QuerySet):
             pub_date__lte=timezone.now(),
             is_published=True,
             category__is_published=True
-        ).order_by('-pub_date')
+        )
 
     def with_related(self):
         return self.select_related(
             'category', 'location', 'author'
-        )
+        ).order_by('-pub_date')
 
     def annotate_comments(self):
         return self.annotate(

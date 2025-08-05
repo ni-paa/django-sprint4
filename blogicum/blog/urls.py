@@ -24,6 +24,6 @@ urlpatterns = [
          views.DeleteCommentView.as_view(), name='delete_comment'),
     path('profile/<str:username>/', views.ProfileView.as_view(),
          name='profile'),
-    path('edit_profile/', views.EditProfileView.as_view(),
+    path('profile/', views.EditProfileView.as_view(),
          name='edit_profile'),
 ]

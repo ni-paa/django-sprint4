@@ -12,7 +12,7 @@ class OnlyAuthorMixin(UserPassesTestMixin):
 
     def handle_no_permission(self):
         return redirect(
-            'blog:post_detail', post_id=self.kwargs['post_id'])
+            'blog:post_detail', self.kwargs['post_id'])
 
 
 class CommentMixin:
