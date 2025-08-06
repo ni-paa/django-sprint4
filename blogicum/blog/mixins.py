@@ -6,6 +6,7 @@ from .models import Comment, Post
 
 
 class OnlyAuthorMixin(UserPassesTestMixin):
+    """Проверка на автора."""
 
     def test_func(self):
         return self.get_object().author == self.request.user
@@ -16,28 +17,27 @@ class OnlyAuthorMixin(UserPassesTestMixin):
 
 
 class CommentMixin:
+    """Миксин для работы с комментариями."""
+    
     model = Comment
     template_name = 'blog/comment.html'
 
     def get_object(self):
         return get_object_or_404(
             Comment,
-            post__id=self.kwargs['post_id'],
             pk=self.kwargs['comment_id'],
         )
 
     def get_success_url(self):
-        return reverse(
-            'blog:post_detail', kwargs={'post_id': self.get_object().post.id})
+        return reverse('blog:post_detail', args=[self.kwargs['post_id']])
 
 
 class PostMixin:
+    """Базовый миксин для постов."""
+    
     model = Post
     template_name = 'blog/create.html'
     pk_url_kwarg = 'post_id'
 
     def get_success_url(self):
-        return reverse(
-            'blog:profile',
-            kwargs={'username_slug': self.request.user.username},
-        )
+        return reverse('blog:profile', args={self.request.user.username})

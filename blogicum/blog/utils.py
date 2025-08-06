@@ -14,9 +14,9 @@ class PostQuerySet(QuerySet):
     def with_related(self):
         return self.select_related(
             'category', 'location', 'author'
-        ).order_by('-pub_date')
+        )
 
     def annotate_comments(self):
         return self.annotate(
             comment_count=Count('comments')
-        )
+        ).order_by('-pub_date')

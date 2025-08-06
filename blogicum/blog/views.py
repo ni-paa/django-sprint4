@@ -1,9 +1,10 @@
 # blog/views.py
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import models
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.urls import reverse_lazy, reverse
+from django.urls import reverse
 from django.utils import timezone
 from django.views.generic import CreateView, UpdateView, DeleteView
 from django.views.generic import DetailView, ListView
@@ -20,7 +21,8 @@ class IndexListView(ListView):
     model = Post
     paginate_by = POSTS_ON_PAGE
     template_name = 'blog/index.html'
-    queryset = Post.objects.published().annotate_comments()
+    queryset = Post.objects.published(
+    ).annotate_comments().select_related()
 
 
 class CategoryPostsView(ListView):
@@ -34,17 +36,18 @@ class CategoryPostsView(ListView):
         self.category = get_object_or_404(
             Category, slug=self.kwargs['slug'], is_published=True
         )
-        queryset = Post.objects.filter(
+        published_posts = Post.objects.filter(
             is_published=True,
             pub_date__lte=timezone.now(),
             category=self.category
-        ).select_related('author',
-                         'category',
-                         'location').order_by('-pub_date')
-
-        queryset = queryset.annotate(comment_count=Count('comments'))
-        queryset = queryset.filter(category__is_published=True)
-        return queryset
+        )
+        posts_with_comments = published_posts.annotate(
+            comment_count=Count('comments')
+        )
+        filtered_posts = posts_with_comments.filter(
+            category__is_published=True
+        )
+        return filtered_posts
 
     def get_context_data(self, **kwargs):
         return super().get_context_data(**kwargs, category=self.category)
@@ -59,7 +62,7 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
         return super().form_valid(form)
 
     def get_success_url(self):
-        return reverse('blog:profile', args={self.request.user.username})
+        return reverse('blog:profile', args=[self.request.user.username])
 
 
 class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
@@ -69,7 +72,7 @@ class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
 
     def get_success_url(self):
         return reverse(
-            'blog:post_detail', args={self.get_object().id})
+            'blog:post_detail', args=[self.get_object().id])
 
 
 class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
@@ -77,11 +80,11 @@ class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
     pk_url_kwarg = 'post_id'
 
     def get_context_data(self, **kwargs):
-        return super().get_context_data(**kwargs, form=PostForm(instance=self.object))
+        return super().get_context_data(**kwargs,
+                                        form=PostForm(instance=self.object))
 
     def get_success_url(self):
-        return reverse('blog:profile',
-                       kwargs={'username': self.request.user.username})
+        return reverse('blog:profile', args=[self.request.user.username])
 
 
 class PostDetailView(DetailView):
@@ -92,15 +95,15 @@ class PostDetailView(DetailView):
     pk_url_kwarg = 'post_id'
 
     def get_object(self, queryset=None):
-        post = get_object_or_404(Post, pk=self.kwargs['post_id'])
-        if not post.is_published and self.request.user != post.author:
-            raise Http404
+        post = super().get_object(queryset)
+        if self.request.user != post.author:
+            if not post.is_published:
+                raise Http404
         return post
 
     def get_context_data(self, **kwargs):
         return {**super().get_context_data(**kwargs), 'form': CommentForm(),
-            'comments': self.object.comments.select_related('author')
-        }
+                'comments': self.object.comments.select_related('author')}
 
 
 class ProfileView(ListView):
@@ -156,8 +159,7 @@ class AddCommentView(LoginRequiredMixin, CreateView):
         return response
 
     def get_success_url(self):
-        return reverse('blog:post_detail',
-                       kwargs={'post_id': self.kwargs['post_id']})
+        return reverse('blog:post_detail', args={self.kwargs['post_id']})
 
 
 class EditCommentView(OnlyAuthorMixin, CommentMixin, UpdateView):

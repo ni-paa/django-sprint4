@@ -38,14 +38,6 @@ class Category(PublishedModel):
     def __str__(self):
         return self.title[:20]
 
-    def save(self, *args, **kwargs):
-        # Сохраняем оригинальный текст.
-        super().save(*args, **kwargs)
-
-    def get_safe_description(self):
-        # Получаем HTML-описание с заменой новых строк на <br>
-        return self.description.replace('\n', '<br>')
-
 
 class Location(PublishedModel):
     name = models.CharField(max_length=256, verbose_name='Название места')
@@ -70,7 +62,6 @@ class Post(PublishedModel):
         User,
         on_delete=models.CASCADE,
         verbose_name='Автор публикации',
-        related_name='posts'
     )
     location = models.ForeignKey(
         Location,
@@ -78,14 +69,12 @@ class Post(PublishedModel):
         on_delete=models.SET_NULL,
         blank=True,
         verbose_name='Местоположение',
-        related_name='posts'
     )
     category = models.ForeignKey(
         Category,
         blank=True,
         on_delete=models.CASCADE,
         verbose_name='Категория',
-        related_name='posts'
     )
     image = models.ImageField(
         upload_to='posts_images', null=True, blank=True,
@@ -96,18 +85,11 @@ class Post(PublishedModel):
     class Meta:
         verbose_name = 'публикация'
         verbose_name_plural = 'Публикации'
+        default_related_name = 'posts'
         ordering = ('-pub_date', )
 
     def __str__(self):
         return self.title[:100]
-
-    def save(self, *args, **kwargs):
-        # Сохраняем оригинальный текст.
-        super().save(*args, **kwargs)
-
-    def get_safe_description(self):
-        # Получаем HTML-описание с заменой новых строк на <br>
-        return self.text.replace('\n', '<br>')
 
 
 class Comment(models.Model):
@@ -116,13 +98,11 @@ class Comment(models.Model):
         User,
         on_delete=models.CASCADE,
         verbose_name='Автор',
-        related_name='comments',
     )
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
         verbose_name='Пост',
-        related_name='comments',
     )
     created_at = models.DateTimeField(auto_now_add=True,
                                       verbose_name='Добавлено')
@@ -130,6 +110,7 @@ class Comment(models.Model):
     class Meta:
         verbose_name = 'комментарий'
         verbose_name_plural = 'Комментарий'
+        default_related_name = 'comments'
         ordering = ('created_at',)
 
     def __str__(self):
