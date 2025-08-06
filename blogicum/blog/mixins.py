@@ -18,7 +18,7 @@ class OnlyAuthorMixin(UserPassesTestMixin):
 
 class CommentMixin:
     """Миксин для работы с комментариями."""
-    
+
     model = Comment
     template_name = 'blog/comment.html'
 
@@ -34,10 +34,10 @@ class CommentMixin:
 
 class PostMixin:
     """Базовый миксин для постов."""
-    
+
     model = Post
     template_name = 'blog/create.html'
     pk_url_kwarg = 'post_id'
 
     def get_success_url(self):
-        return reverse('blog:profile', args={self.request.user.username})
+        return reverse('blog:profile', args=[self.request.user.username])

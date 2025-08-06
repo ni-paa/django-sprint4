@@ -1,6 +1,5 @@
 # blog/views.py
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db import models
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404
@@ -15,8 +14,8 @@ from .mixins import OnlyAuthorMixin, CommentMixin, PostMixin
 from .models import Category, Comment, Post, User
 
 
-class IndexListView(ListView):
-    """Представление для главной страницы."""
+class BlogIndexListView(ListView):
+    """Главная страница."""
 
     model = Post
     paginate_by = POSTS_ON_PAGE
@@ -26,7 +25,7 @@ class IndexListView(ListView):
 
 
 class CategoryPostsView(ListView):
-    """Представление для страницы категории."""
+    """Страницы для категории."""
 
     model = Post
     paginate_by = POSTS_ON_PAGE
@@ -40,7 +39,7 @@ class CategoryPostsView(ListView):
             is_published=True,
             pub_date__lte=timezone.now(),
             category=self.category
-        )
+        ).order_by('-pub_date')
         posts_with_comments = published_posts.annotate(
             comment_count=Count('comments')
         )
@@ -68,7 +67,6 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
 class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
 
     form_class = PostForm
-    pk_url_kwarg = 'post_id'
 
     def get_success_url(self):
         return reverse(
@@ -76,8 +74,6 @@ class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
 
 
 class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
-
-    pk_url_kwarg = 'post_id'
 
     def get_context_data(self, **kwargs):
         return super().get_context_data(**kwargs,
@@ -102,8 +98,11 @@ class PostDetailView(DetailView):
         return post
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), 'form': CommentForm(),
-                'comments': self.object.comments.select_related('author')}
+        return super().get_context_data(
+            **kwargs,
+            form=CommentForm(),
+            comments=self.object.comments.select_related('author'),
+            )
 
 
 class ProfileView(ListView):
@@ -113,18 +112,38 @@ class ProfileView(ListView):
     template_name = 'blog/profile.html'
     paginate_by = POSTS_ON_PAGE
 
+    def get_user(self):
+        return get_object_or_404(
+            User,
+            username=self.kwargs['username']
+        )
+
+    def get_posts(self):
+        return (
+            Post.objects
+            .select_related('category', 'author', 'location')
+            .annotate(comment_count=Count('comments'))
+            .order_by('-pub_date')
+        )
+
+    def get_posts_with_filter(self):
+        return (
+            self.get_posts()
+            .filter(
+                is_published=True,
+                category__is_published=True,
+                pub_date__lte=timezone.now()
+            )
+        )
+
     def get_queryset(self):
-        profile = get_object_or_404(User, username=self.kwargs['username'])
-        posts = Post.objects.filter(author=profile).select_related(
-            'author').prefetch_related('comments', 'category', 'location')
-        posts_annotated = posts.annotate(comment_count=Count('comments'))
-        return posts_annotated.order_by('-pub_date')
+        if self.request.user == self.get_user():
+            return self.get_posts().filter(author=self.get_user())
+        return self.get_posts_with_filter().filter(author=self.get_user())
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        if 'profile' not in context:
-            context['profile'] = get_object_or_404(
-                User, username=self.kwargs['username'])
+        context['profile'] = self.get_user()
         return context
 
 
@@ -140,9 +159,7 @@ class EditProfileView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse(
-            'blog:profile',
-            kwargs={'username': self.request.user.username}
-        )
+            'blog:profile', args=[self.request.user.username])
 
 
 class AddCommentView(LoginRequiredMixin, CreateView):
