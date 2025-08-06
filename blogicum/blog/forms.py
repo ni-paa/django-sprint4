@@ -1,5 +1,6 @@
 # blog/forms.py
 from django import forms
+from django.contrib.auth.forms import UserChangeForm
 
 from .models import Comment, Post, User
 
@@ -13,7 +14,7 @@ class CommentForm(forms.ModelForm):
 
 
 class PostForm(forms.ModelForm):
-    """Форма создания/редактирования поста."""
+    """Форма создания/редактирования публикаций."""
 
     class Meta:
         model = Post
@@ -26,9 +27,9 @@ class PostForm(forms.ModelForm):
         }
 
 
-class ProfileForm(forms.ModelForm):
-    """Форма редактирования профиля."""
+class ProfileForm(UserChangeForm):
+    """Форма редактирования профиля пользователя."""
 
-    class Meta:
+    class Meta(UserChangeForm.Meta):
         model = User
         fields = ('first_name', 'last_name', 'username', 'email')

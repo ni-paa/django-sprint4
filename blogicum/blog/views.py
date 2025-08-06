@@ -1,7 +1,6 @@
 # blog/views.py
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count
-from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -14,7 +13,25 @@ from .mixins import OnlyAuthorMixin, CommentMixin, PostMixin
 from .models import Category, Comment, Post, User
 
 
-class BlogIndexListView(ListView):
+def process_posts(posts=Post.objects.all(), apply_filters=True,
+                  use_select_related=True,
+                  apply_annotation=True):
+    """Фильтрация, аннотирование и сортировка постов."""
+    if apply_filters:
+        posts = posts.filter(
+            is_published=True,
+            category__is_published=True,
+            pub_date__lte=timezone.now()
+        )
+    if use_select_related:
+        posts = posts.select_related('category', 'location', 'author')
+    if apply_annotation:
+        posts = posts.annotate(
+            comment_count=Count('comments')).order_by(*Post._meta.ordering)
+    return posts
+
+
+class IndexListView(ListView):
     """Главная страница."""
 
     model = Post
@@ -25,31 +42,19 @@ class BlogIndexListView(ListView):
 
 
 class CategoryPostsView(ListView):
-    """Страницы для категории."""
+    """Отображение публикаций в категории."""
 
     model = Post
     paginate_by = POSTS_ON_PAGE
     template_name = 'blog/category.html'
 
-    def get_queryset(self):
-        self.category = get_object_or_404(
+    def get_category(self):
+        return get_object_or_404(
             Category, slug=self.kwargs['slug'], is_published=True
         )
-        published_posts = Post.objects.filter(
-            is_published=True,
-            pub_date__lte=timezone.now(),
-            category=self.category
-        ).order_by('-pub_date')
-        posts_with_comments = published_posts.annotate(
-            comment_count=Count('comments')
-        )
-        filtered_posts = posts_with_comments.filter(
-            category__is_published=True
-        )
-        return filtered_posts
 
-    def get_context_data(self, **kwargs):
-        return super().get_context_data(**kwargs, category=self.category)
+    def get_queryset(self):
+        return process_posts(self.get_category().posts.all())
 
 
 class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
@@ -65,15 +70,17 @@ class PostCreateView(LoginRequiredMixin, PostMixin, CreateView):
 
 
 class PostUpdateView(OnlyAuthorMixin, PostMixin, UpdateView):
+    """Редактирование публикации."""
 
     form_class = PostForm
 
     def get_success_url(self):
-        return reverse(
-            'blog:post_detail', args=[self.get_object().id])
+        return reverse('blog:post_detail',
+                       args=[self.kwargs[self.pk_url_kwarg]])
 
 
 class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
+    """Удаление публикации."""
 
     def get_context_data(self, **kwargs):
         return super().get_context_data(**kwargs,
@@ -84,71 +91,55 @@ class PostDeleteView(OnlyAuthorMixin, PostMixin, DeleteView):
 
 
 class PostDetailView(DetailView):
-    """Представление для детальной страницы поста."""
+    """Детальная страница публикации."""
 
     model = Post
     template_name = 'blog/detail.html'
     pk_url_kwarg = 'post_id'
 
-    def get_object(self, queryset=None):
-        post = super().get_object(queryset)
-        if self.request.user != post.author:
-            if not post.is_published:
-                raise Http404
-        return post
+    def get_object(self):
+        post = super().get_object()
+        if self.request.user == post.author:
+            return post
+        return super().get_object(process_posts(
+            use_select_related=False,
+            apply_annotation=False
+        ))
 
     def get_context_data(self, **kwargs):
         return super().get_context_data(
             **kwargs,
             form=CommentForm(),
             comments=self.object.comments.select_related('author'),
-            )
+        )
 
 
 class ProfileView(ListView):
-    """Представление для просмотра профиля."""
+    """Просмотр профиля."""
 
     model = Post
     template_name = 'blog/profile.html'
     paginate_by = POSTS_ON_PAGE
 
-    def get_user(self):
-        return get_object_or_404(
-            User,
-            username=self.kwargs['username']
-        )
-
-    def get_posts(self):
-        return (
-            Post.objects
-            .select_related('category', 'author', 'location')
-            .annotate(comment_count=Count('comments'))
-            .order_by('-pub_date')
-        )
-
-    def get_posts_with_filter(self):
-        return (
-            self.get_posts()
-            .filter(
-                is_published=True,
-                category__is_published=True,
-                pub_date__lte=timezone.now()
-            )
-        )
+    def get_author(self):
+        return get_object_or_404(User, username=self.kwargs['username'])
 
     def get_queryset(self):
-        if self.request.user == self.get_user():
-            return self.get_posts().filter(author=self.get_user())
-        return self.get_posts_with_filter().filter(author=self.get_user())
+        author = self.get_author()
+        return process_posts(
+            author.posts.all(),
+            apply_filters=self.request.user != author)
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['profile'] = self.get_user()
-        return context
+        return super().get_context_data(
+            **kwargs,
+            profile=self.get_author(),
+            is_owner=self.request.user == self.get_author()
+        )
 
 
 class EditProfileView(LoginRequiredMixin, UpdateView):
-    """Представление для редактирования профиля."""
+    """Редактирование профиля."""
 
     model = User
     form_class = ProfileForm
@@ -158,8 +149,7 @@ class EditProfileView(LoginRequiredMixin, UpdateView):
         return self.request.user
 
     def get_success_url(self):
-        return reverse(
-            'blog:profile', args=[self.request.user.username])
+        return reverse('blog:profile', args=[self.request.user.username])
 
 
 class AddCommentView(LoginRequiredMixin, CreateView):
@@ -176,7 +166,7 @@ class AddCommentView(LoginRequiredMixin, CreateView):
         return response
 
     def get_success_url(self):
-        return reverse('blog:post_detail', args={self.kwargs['post_id']})
+        return reverse('blog:post_detail', args=[self.kwargs['post_id']])
 
 
 class EditCommentView(OnlyAuthorMixin, CommentMixin, UpdateView):
