@@ -37,8 +37,7 @@ class IndexListView(ListView):
     model = Post
     paginate_by = POSTS_ON_PAGE
     template_name = 'blog/index.html'
-    queryset = Post.objects.published(
-    ).annotate_comments().select_related()
+    queryset = process_posts()
 
 
 class CategoryPostsView(ListView):
@@ -134,7 +133,6 @@ class ProfileView(ListView):
         return super().get_context_data(
             **kwargs,
             profile=self.get_author(),
-            is_owner=self.request.user == self.get_author()
         )
 
 

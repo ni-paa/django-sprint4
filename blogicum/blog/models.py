@@ -1,7 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from .utils import PostQuerySet
 
 User = get_user_model()
 
@@ -80,7 +79,6 @@ class Post(PublishedModel):
         upload_to='posts_images', null=True, blank=True,
         verbose_name='Изображение'
     )
-    objects = PostQuerySet.as_manager()
 
     class Meta:
         verbose_name = 'публикация'
